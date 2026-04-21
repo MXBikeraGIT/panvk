@@ -1,33 +1,51 @@
-name: Build PanVK from GitLab
+name: Build PanVK for ARM64
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-panvk:
+  build-panvk-arm64:
     runs-on: ubuntu-latest
     steps:
       - name: Install Dependencies
         run: |
           sudo apt-get update
+          # Install native build tools and the ARM64 cross-compiler
           sudo apt-get install -y \
-            meson ninja-build pkg-config python3-mako python3-ply \
-            libdrm-dev libx11-dev libxext-dev libxdamage-dev \
-            libxfixes-dev libxcb-glx0-dev libxcb-shm0-dev \
-            libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev \
-            libxcb-sync-dev libxshmfence-dev libxrandr-dev \
-            libwayland-dev wayland-protocols libwayland-egl-backend-dev \
-            libvulkan-dev python3-setuptools flex bison
+            ninja-build pkg-config python3-mako python3-ply \
+            python3-setuptools python3-pip flex bison \
+            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            libdrm-dev libvulkan-dev
+
+          # Fix Meson version: Install latest via pip to meet Mesa's >=1.4.0 requirement
+          pip3 install --upgrade meson --break-system-packages
 
       - name: Clone Mesa from GitLab
-        # Shallow clone to save time and space
         run: git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa-src
 
-      - name: Configure Meson (Minimal)
+      - name: Create ARM64 Cross File
+        run: |
+          cat <<EOF > cross_file.txt
+          [binaries]
+          c = 'aarch64-linux-gnu-gcc'
+          cpp = 'aarch64-linux-gnu-g++'
+          ar = 'aarch64-linux-gnu-ar'
+          strip = 'aarch64-linux-gnu-strip'
+          pkgconfig = 'pkg-config'
+
+          [host_machine]
+          system = 'linux'
+          cpu_family = 'aarch64'
+          cpu = 'armv8-a'
+          endian = 'little'
+          EOF
+
+      - name: Configure Meson (PanVK Focused)
         run: |
           meson setup build mesa-src \
+            --cross-file cross_file.txt \
             --buildtype=release \
-            -Dplatforms=x11,wayland \
+            -Dplatforms=wayland \
             -Dgallium-drivers=panfrost \
             -Dvulkan-drivers=panfrost \
             -Dopengl=false \
@@ -36,14 +54,14 @@ jobs:
             -Dglx=disabled \
             -Degl=disabled \
             -Dgbm=disabled \
-            -Dllvm=disabled
+            -Dllvm=disabled \
+            -Dshared-glapi=disabled
 
       - name: Build PanVK Only
-        # Direct target for the Panfrost Vulkan driver
         run: ninja -C build src/panfrost/vulkan/libvulkan_panfrost.so
 
-      - name: Upload Artifact
+      - name: Upload ARM64 Binary
         uses: actions/upload-artifact@v4
         with:
-          name: libvulkan_panfrost
+          name: libvulkan_panfrost_arm64
           path: build/src/panfrost/vulkan/libvulkan_panfrost.so
