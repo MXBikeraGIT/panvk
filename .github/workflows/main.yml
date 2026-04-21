@@ -1,21 +1,13 @@
-name: Compile PanVK Driver Only
+name: Build PanVK from GitLab
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   build-panvk:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Mesa Source
-        uses: actions/checkout@v4
-        with:
-          repository: mesa3d/mesa
-          fetch-depth: 1
-
-      - name: Install Build Dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -27,9 +19,13 @@ jobs:
             libwayland-dev wayland-protocols libwayland-egl-backend-dev \
             libvulkan-dev python3-setuptools flex bison
 
-      - name: Configure Meson (PanVK Focused)
+      - name: Clone Mesa from GitLab
+        # Shallow clone to save time and space
+        run: git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa-src
+
+      - name: Configure Meson (Minimal)
         run: |
-          meson setup build \
+          meson setup build mesa-src \
             --buildtype=release \
             -Dplatforms=x11,wayland \
             -Dgallium-drivers=panfrost \
@@ -40,20 +36,14 @@ jobs:
             -Dglx=disabled \
             -Degl=disabled \
             -Dgbm=disabled \
-            -Ddri3=enabled \
-            -Dllvm=disabled \
-            -Dlmsensors=disabled \
-            -Dshared-glapi=disabled \
-            -Dgallium-vdpau=disabled \
-            -Dgallium-va=disabled \
-            -Dgallium-xa=disabled
+            -Dllvm=disabled
 
-      - name: Compile PanVK Binary
-        # Explicitly target the Panfrost Vulkan driver library
+      - name: Build PanVK Only
+        # Direct target for the Panfrost Vulkan driver
         run: ninja -C build src/panfrost/vulkan/libvulkan_panfrost.so
 
-      - name: Upload PanVK Binary
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: panvk-driver
+          name: libvulkan_panfrost
           path: build/src/panfrost/vulkan/libvulkan_panfrost.so
