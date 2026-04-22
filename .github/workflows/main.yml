@@ -1,27 +1,25 @@
-name: Build PanVK for ARM64
+name: Build PanVK for Galaxy A06 (Mali-G52)
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-panvk-arm64:
+  build-panvk:
     runs-on: ubuntu-latest
     steps:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          # Install native build tools and the ARM64 cross-compiler
           sudo apt-get install -y \
             ninja-build pkg-config python3-mako python3-ply \
             python3-setuptools python3-pip flex bison \
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            libdrm-dev libvulkan-dev
-
-          # Fix Meson version: Install latest via pip to meet Mesa's >=1.4.0 requirement
+            libdrm-dev-arm64-cross libvulkan-dev-arm64-cross
+          
           pip3 install --upgrade meson --break-system-packages
 
       - name: Clone Mesa from GitLab
-        run: git clone --depth 1 https://gitlab.freedesktop.org/mesa/mesa.git mesa-src
+        run: git clone --depth 1 https://freedesktop.org mesa-src
 
       - name: Create ARM64 Cross File
         run: |
@@ -31,7 +29,7 @@ jobs:
           cpp = 'aarch64-linux-gnu-g++'
           ar = 'aarch64-linux-gnu-ar'
           strip = 'aarch64-linux-gnu-strip'
-          pkgconfig = 'pkg-config'
+          pkg-config = 'aarch64-linux-gnu-pkg-config'
 
           [host_machine]
           system = 'linux'
@@ -40,8 +38,9 @@ jobs:
           endian = 'little'
           EOF
 
-      - name: Configure Meson (PanVK Focused)
+      - name: Configure Meson
         run: |
+          # The key is -Dgallium-vulkan-clc=disabled and -Dllvm=disabled together
           meson setup build mesa-src \
             --cross-file cross_file.txt \
             --buildtype=release \
@@ -55,13 +54,17 @@ jobs:
             -Degl=disabled \
             -Dgbm=disabled \
             -Dllvm=disabled \
-            -Dshared-glapi=disabled
+            -Dgallium-vulkan-clc=disabled \
+            -Dvideo-codecs=none \
+            -Dgallium-va=disabled \
+            -Dgallium-vdpau=disabled \
+            -Dgallium-xa=disabled
 
       - name: Build PanVK Only
         run: ninja -C build src/panfrost/vulkan/libvulkan_panfrost.so
 
-      - name: Upload ARM64 Binary
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libvulkan_panfrost_arm64
+          name: libvulkan_panfrost_A06
           path: build/src/panfrost/vulkan/libvulkan_panfrost.so
